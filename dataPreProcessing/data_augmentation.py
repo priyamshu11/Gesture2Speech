@@ -2,84 +2,59 @@ import json
 import random
 import os
 
+def convert_keypoints_to_floats(keypoints_data):
+    for label, keypoints_list in keypoints_data.items():
+        for i, frame_keypoints in enumerate(keypoints_list):
+            keypoints_data[label][i] = [[float(coord) for coord in kp] for kp in frame_keypoints]
+    return keypoints_data
+
+def augment_keypoints(keypoints_data, num_augmented_versions=5, frame_keep_prob=0.7, noise_factor=0.05):
+    augmented_data = {}
+    for label, keypoints_list in keypoints_data.items():
+        augmented_data[label] = []
+        for _ in range(num_augmented_versions):
+            augmented_version = []
+            for frame_keypoints in keypoints_list:
+                if random.random() < frame_keep_prob:
+                    noisy_frame = [[kp[0] + random.uniform(-noise_factor, noise_factor),  # X-axis
+                                   kp[1] + random.uniform(-noise_factor, noise_factor),  # Y-axis
+                                   kp[2] + random.uniform(-noise_factor, noise_factor)]  # Z-axis
+                                  for kp in frame_keypoints]
+                    augmented_version.append(noisy_frame)
+            if len(augmented_version) == 0:
+                augmented_version = keypoints_list[:]
+            augmented_data[label].append(augmented_version)
+    return augmented_data
+
 def load_keypoints_json(filepath):
-    """ Load the JSON file containing keypoints data. """
     with open(filepath, 'r') as file:
         return json.load(file)
 
-def replace_empty_with_default(keypoints_frame, default_value=[0.0, 0.0, 0.0]):
-    """ Replace empty arrays in a keypoints frame with the default value. """
-    return [kp if len(kp)!=0 else default_value for kp in keypoints_frame]
-
-def process_keypoints(keypoints_list):
-    """ Process keypoints by replacing empty arrays and sampling 70% of the keypoints. """
-    output_keypoints_list = []
-    for keypoints_frame in keypoints_list:
-        # print(keypoints_frame)
-        # Ensure no empty arrays exist, replace with [0.0, 0.0, 0.0]
-        # keypoints_frame = replace_empty_with_default(keypoints_frame, default_value=[0.0, 0.0, 0.0])
-
-        # Check if the frame is not empty after replacement
-        if len(keypoints_frame)!=0:
-            num_points_to_select = int(0.7 * len(keypoints_frame))
-            random_points = random.sample(keypoints_frame, num_points_to_select)
-        else:
-            random_points = [[0.0, 0.0, 0.0]]  # If frame is empty, insert a default point
-        
-        # Ensure random_points also don't have any empty lists
-        if len(random_points)==0:
-            random_points=[[0.0,0.0,0.0]]
-        output_keypoints_list.append(random_points)
-            # print("***")
-
-    return output_keypoints_list
+def save_augmented_data(augmented_data, base_output_dir):
+    os.makedirs(base_output_dir, exist_ok=True)
+    for label, augmented_versions in augmented_data.items():
+        label_folder = os.path.join(base_output_dir, label)
+        os.makedirs(label_folder, exist_ok=True)
+        for version_idx, augmented_version in enumerate(augmented_versions):
+            version_folder = os.path.join(label_folder, f'version_{version_idx + 1}')
+            os.makedirs(version_folder, exist_ok=True)
+            filename = 'keypoints.json'
+            output_path = os.path.join(version_folder, filename)
+            with open(output_path, 'w') as outfile:
+                json.dump({label: augmented_version}, outfile)
 
 def main():
-    # Path to the normalized keypoints JSON file
-    input_file = r'/Users/ranjannaik/Desktop/FINAL_YEAR_PROJECT/Gesture2Speech/dataPreProcessing/normalized_keypoints.json'
-    
-    # Load keypoints data from the JSON file
-    try:
-        keypoints_data = load_keypoints_json(input_file)
-        print(f"Loaded keypoints from {input_file}.")
-    except FileNotFoundError:
-        print(f"Error: The file {input_file} was not found.")
-        return
+    input_file = r'D:\FINAL_YEAR_PROJECT\Gesture2Speech\normalized_keypoints.json'  # Adjust this path
+    keypoints_data = load_keypoints_json(input_file)
 
-    # Get the base folder name from the input file (e.g., normalized_keypoints)
-    base_folder = os.path.splitext(os.path.basename(input_file))[0]
-    os.makedirs(base_folder, exist_ok=True)
-    print(f"Base folder created: {base_folder}")
+    # Convert keypoints to floats
+    keypoints_data = convert_keypoints_to_floats(keypoints_data)
 
-    # Iterate over each category (like Adjectives, Pronouns, etc.)
-    for category, labels_data in keypoints_data.items():
-        category_folder = os.path.join(base_folder, category)
-        os.makedirs(category_folder, exist_ok=True)
-        print(f"Category folder created: {category_folder}")
+    # Augment the keypoints data
+    augmented_data = augment_keypoints(keypoints_data, num_augmented_versions=20, frame_keep_prob=0.7, noise_factor=0.05)
 
-        # Iterate over each label (like clean, dirty, etc.)
-        for label, keypoints_list in labels_data.items():
-            label_folder = os.path.join(category_folder, label)
-            os.makedirs(label_folder, exist_ok=True)
-            print(f"Label folder created: {label_folder}")
+    # Save augmented data to a structured folder
+    save_augmented_data(augmented_data, base_output_dir="augmented_data")
 
-            # Prepare the path for the output keypoints.json file
-            output_path = os.path.join(label_folder, 'keypoints.json')
-
-            # Process keypoints and randomly select 70% per frame, replacing empty arrays
-            output_keypoints_list = process_keypoints(keypoints_list)
-
-            # Write the processed keypoints to keypoints.json
-            if output_keypoints_list:
-                try:
-                    with open(output_path, 'w') as outfile:
-                        json.dump({label: output_keypoints_list}, outfile)
-                    print(f"File saved: {output_path}")
-                except Exception as e:
-                    print(f"Error writing to {output_path}: {e}")
-            else:
-                print(f"Keypoints list is empty for {label}. Skipping writing to {output_path}.")
-
-# Corrected condition to check if the script is being run as the main module
 if __name__ == "__main__":
     main()
