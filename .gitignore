@@ -2,3 +2,5 @@ videos/
 frames/
 keypoints.json
 normalized_keypoints.json
+keypoints1.json
+normalized_keypoints1.json
